@@ -7,10 +7,10 @@
 #property link      "hotyoh@gmail.com"
 
 extern double Lots=0.1;  
-extern double TrailingStop=55;
-extern int    MACD_level=25; //(1-12)
+extern double TrailingStop=20;
+extern int    MACD_level=500;//25; //(1-12)
 extern int    MAGIC=100001;
-extern int    tp_limit=60;
+extern int    tp_limit=100;//60;
 int gap=1;
 extern int wait_time_b4_SL=10000;
 
@@ -27,7 +27,7 @@ double   MACD_Strength=0;
 //+------------------------------------------------------------------+
 int init()
   { 
-  calPips();
+  pips = getPips();
    return(0);
   }
 
@@ -62,8 +62,11 @@ int MACD_Direction ()
   //printf("MACD_Direction call");
    double MACDSignal1,MACDSignal2,ind_buffer1[100], Signal1, Signal2;
    
-   MACDSignal2=iMA(NULL,0,12,0,MODE_EMA,Close[0],0)-iMA(NULL,0,26,0,MODE_EMA,Close[0],0);
-   MACDSignal1=iMA(NULL,0,12,0,MODE_EMA,Close[gap],gap)-iMA(NULL,0,26,0,MODE_EMA,Close[gap],gap);
+   //MACDSignal2=iMA(NULL,0,12,0,MODE_EMA,Close[0],0)-iMA(NULL,0,26,0,MODE_EMA,Close[0],0);
+   //MACDSignal1=iMA(NULL,0,12,0,MODE_EMA,Close[gap],gap)-iMA(NULL,0,26,0,MODE_EMA,Close[gap],gap);
+   
+   MACDSignal2=iMA(NULL,0,12,0,0,Close[0],0)-iMA(NULL,0,26,0,MODE_EMA,Close[0],0);
+   MACDSignal1=iMA(NULL,0,12,0,0,Close[gap],gap)-iMA(NULL,0,26,0,MODE_EMA,Close[gap],gap);
 
    MACD_Strength=MACDSignal2-MACDSignal1; if (MACD_Strength<0) MACD_Strength=MACD_Strength*(-1);
 
@@ -71,6 +74,8 @@ int MACD_Direction ()
    if(MACDSignal1>0) return (1); 
    else return (0);  
   }
+  
+  
 //+--------------------------------------------------------------------------------+
 //| ClosePending function closes the open order (mainly due to stoploss condition) |
 //+--------------------------------------------------------------------------------+
@@ -93,38 +98,28 @@ void ClosePending()
 //+------------------------------+
 //| The main start function      |
 //+------------------------------+
-void do_order(int type)
- {
-   //recalculateLotSize();
-   if (type==1)
-      {
-             //ticket=OrderSend(Symbol(),OP_BUY,Lots,Ask,3,0,0,"PM",MAGIC,0,White); // buy
-             ticket=OrderSend(Symbol(),OP_BUY,Lots,Ask,3,Ask-(StopLoss*pips), Ask+(TakeProfit*pips),"PM",MAGIC,0,White); // buy
-             if(ticket>0)
-                     { 
-                        if(OrderSelect(ticket,SELECT_BY_TICKET,MODE_TRADES))
-                           { Print("BUY order opened : ",OrderOpenPrice()); } // buy order successful
-                        pace=tp_limit; tp_cnt=0; pending_time=0;  find_highest=true;
-                     }
-              else Print("Error opening SELL order : ",GetLastError());
-              buy_flag=false;
-      }
-  else if (type==2)
-      {
-             //ticket=OrderSend(Symbol(),OP_SELL,Lots,Bid,3,0,0,"PM",MAGIC,0,Red);
-             ticket=OrderSend(Symbol(),OP_SELL,Lots,Bid,3,Bid+(StopLoss*pips), Bid-(TakeProfit*pips),"PM",MAGIC,0,Red);
+void do_order(int type) {
+   Lots = reLotSize(Lots, true, true);
+   
+   if (type==1){
+      ticket=OrderSend(Symbol(),OP_BUY,Lots,Ask,3,Ask-(StopLoss*pips), Ask+(TakeProfit*pips),"PM",MAGIC,0,White);
+      //ticket=OrderSend(Symbol(),OP_BUY,Lots,Ask,3,0,0,"PM",MAGIC,0,White); // buy
+      buy_flag=false;
+      find_highest=true;
+   }else if (type==2){
+      ticket=OrderSend(Symbol(),OP_SELL,Lots,Bid,3,Bid+(StopLoss*pips), Bid-(TakeProfit*pips),"PM",MAGIC,0,Red);   
+      //ticket=OrderSend(Symbol(),OP_SELL,Lots,Bid,3,0,0,"PM",MAGIC,0,Red);
+      sell_flag=false;
+      find_lowest=true;  
+   }
              
-             if(ticket>0)
-                     {
-                       if(OrderSelect(ticket,SELECT_BY_TICKET,MODE_TRADES))
-                         { Print("SELL order opened : ",OrderOpenPrice()); }
-                       pace=tp_limit; tp_cnt=0; pending_time=0; find_lowest=true;
-                     }
-             else Print("Error opening SELL order : ",GetLastError());
-             sell_flag=false;
-      }
- 
+   if(ticket>0){
+      pace=tp_limit; 
+      tp_cnt=0; 
+      pending_time=0; 
+   }
  }
+
 //+------------------------------+
 //| The main start function      |
 //+------------------------------+
@@ -228,14 +223,14 @@ int start()
              }
         return (0);
       }
-   printf("trend : "+trend+", last_trend : "+last_trend);
+   //printf("trend : "+trend+", last_trend : "+last_trend);
    if (trend>0 && last_trend<0 /*&& MACD_Strength>Point*0.001*/)  
          { buy_flag=true; sell_flag=false; last_trend=trend; }
 
    else if (trend<0 && last_trend>0 /*&& MACD_Strength>Point*0.001*/)  
          { sell_flag=true; buy_flag=false; last_trend=trend; }
 
-   printf("sell_flag : "+sell_flag+", buy_flag : "+buy_flag);
+   //printf("sell_flag : "+sell_flag+", buy_flag : "+buy_flag);
    if (sell_flag==true || buy_flag==true)
      { 
       if (buy_flag==true) do_order(1); 
@@ -244,28 +239,35 @@ int start()
  }
 
 
-//void OnTick(){
-//   printf("ontick");
-   //start();
-//}
-void recalculateLotSize(){
-   //extern double lotSize = 0.1;
-   // 100 : 0.1 ? x/1000
+
+//+------------------------------------------------------------------+
+//| Re-Calculate LotSize function                                    |
+//| Ex. Lots = reLotSize(Lots, true, true);                          |
+//+------------------------------------------------------------------+
+double reLotSize(double currLotSize, bool recalculateFlag, bool decreaseFlag){
+   if(!recalculateFlag)
+      return currLotSize;
+
    double balance = AccountBalance();
    double newLotSize = DoubleToStr(AccountBalance()/1000, 2);
-   //if(newLotSize > lotSize)
-   Lots = newLotSize;
-   //printf("[recalculateLotSize] lotSize(not) : "+AccountBalance()/1000);
-   //printf("[recalculateLotSize] lotSize(chg) : "+lotSize);
- }
- 
- void calPips(){
-   double tickSize = MarketInfo(NULL, MODE_TICKSIZE);
-   //printf("TICKSIZE : "+tickSize);
-   if(tickSize == 0.00001 || tickSize == 0.001)
-      pips = tickSize *10;
-   else
-      pips = tickSize;
-   //printf("pips : "+pips);
+   if(decreaseFlag){
+      return newLotSize;
+   }else{
+      if(newLotSize > currLotSize) 
+         return newLotSize;
+      else 
+          return currLotSize;
+   }
+}
 
+//+------------------------------------------------------------------+
+//| Set PIP in firs time function                                    |
+//| Ex. pips = getPips();                                            |
+//+------------------------------------------------------------------+
+double getPips(){
+   double tickSize = MarketInfo(NULL, MODE_TICKSIZE);
+   if(tickSize == 0.00001 || tickSize == 0.001)
+      return tickSize *10;
+   else
+      return tickSize;
  }
